@@ -1,0 +1,567 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>เกมการ์ดจับคู่ตัวส่วนร่วม</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Kanit:wght@300;400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    
+    <style>
+        body {
+            font-family: 'Kanit', sans-serif;
+            background: linear-gradient(135deg, #e0f2fe 0%, #bae6fd 100%);
+            min-height: 100vh;
+            overflow-x: hidden;
+            touch-action: manipulation; /* ป้องกันการซูมเมื่อแตะรัวๆ บนมือถือ */
+        }
+        
+        .fraction {
+            display: inline-flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            vertical-align: middle;
+            margin: 0 4px;
+        }
+        
+        .fraction-num {
+            font-weight: 600;
+            line-height: 1.1;
+        }
+        
+        .fraction-den {
+            font-weight: 600;
+            line-height: 1.1;
+            border-top: 2px solid currentColor;
+            padding-top: 2px;
+            width: 100%;
+            text-align: center;
+        }
+
+        .card-pop {
+            transition: all 0.2s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+            cursor: pointer;
+        }
+        
+        .card-pop:hover {
+            transform: translateY(-5px) scale(1.02);
+            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1), 0 4px 6px -2px rgba(0, 0, 0, 0.05);
+        }
+
+        .card-pop:active {
+            transform: translateY(2px) scale(0.98);
+        }
+
+        .slot-empty {
+            border: 2px dashed #94a3b8;
+            background-color: rgba(255, 255, 255, 0.5);
+        }
+
+        /* Animations */
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-5px); }
+            40%, 80% { transform: translateX(5px); }
+        }
+        
+        .shake-animation {
+            animation: shake 0.5s ease-in-out;
+        }
+
+        @keyframes bounceIn {
+            0% { transform: scale(0.3); opacity: 0; }
+            50% { transform: scale(1.05); opacity: 1; }
+            70% { transform: scale(0.9); }
+            100% { transform: scale(1); }
+        }
+
+        .bounce-in {
+            animation: bounceIn 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        /* SVG Fraction Styles */
+        .svg-fraction rect {
+            transition: fill 0.3s ease;
+        }
+    </style>
+</head>
+<body class="text-slate-800 selection:bg-blue-300">
+
+    <!-- หน้าจอเริ่มต้น -->
+    <div id="start-screen" class="fixed inset-0 z-50 flex flex-col items-center justify-center bg-gradient-to-br from-blue-400 to-indigo-600 text-white p-6 transition-opacity duration-500">
+        <div class="max-w-md w-full bg-white/10 backdrop-blur-md rounded-3xl p-8 text-center shadow-2xl border border-white/20 bounce-in">
+            <div class="text-6xl mb-4">🧩</div>
+            <h1 class="text-3xl md:text-4xl font-bold mb-4 leading-tight">เกมการ์ดจับคู่<br>ตัวส่วนร่วม</h1>
+            <p class="text-blue-100 mb-8 text-lg">มาฝึกบวกและลบเศษส่วนกันเถอะ!<br>หาตัวส่วนร่วม คำตอบ และภาพที่ตรงกัน</p>
+            <button id="btn-start" class="w-full py-4 bg-yellow-400 hover:bg-yellow-300 text-yellow-900 rounded-full font-bold text-xl shadow-[0_6px_0_#b45309] hover:shadow-[0_4px_0_#b45309] hover:translate-y-[2px] transition-all active:shadow-none active:translate-y-[6px]">
+                เริ่มเล่นเกมเลย! <i class="fas fa-play ml-2"></i>
+            </button>
+        </div>
+    </div>
+
+    <!-- หน้าจอหลักของเกม -->
+    <div id="game-screen" class="hidden min-h-screen flex flex-col max-w-4xl mx-auto p-4 md:p-6 pb-24">
+        
+        <!-- Header -->
+        <header class="flex justify-between items-center bg-white rounded-2xl p-4 shadow-sm mb-6">
+            <div class="flex items-center gap-3">
+                <div class="bg-blue-100 text-blue-600 w-10 h-10 rounded-full flex items-center justify-center font-bold text-lg shadow-inner">
+                    <span id="round-display">1</span>/5
+                </div>
+                <h2 class="font-bold text-lg hidden md:block text-slate-600">ภารกิจที่ต้องทำ</h2>
+            </div>
+            <div class="flex items-center gap-2 bg-yellow-100 text-yellow-700 px-4 py-2 rounded-full font-bold">
+                <i class="fas fa-star text-yellow-500"></i> คะแนน: <span id="score-display">0</span>
+            </div>
+        </header>
+
+        <!-- พื้นที่โจทย์และช่องวางการ์ด -->
+        <section class="bg-white rounded-3xl shadow-md p-5 md:p-8 mb-6 border-t-8 border-blue-400">
+            <!-- โจทย์ -->
+            <div class="text-center mb-8">
+                <p class="text-sm text-slate-400 font-semibold mb-2 uppercase tracking-wide">การ์ดโจทย์</p>
+                <div id="problem-container" class="inline-block bg-blue-50 text-blue-800 text-3xl md:text-5xl font-bold px-8 py-4 rounded-2xl border-2 border-blue-200 shadow-sm">
+                    <!-- แทรก HTML เศษส่วนผ่าน JS -->
+                </div>
+            </div>
+
+            <!-- ช่องวางการ์ด (Slots) -->
+            <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <!-- ช่องส่วนร่วม -->
+                <div class="flex flex-col items-center">
+                    <p class="text-xs font-bold text-yellow-600 mb-2"><i class="fas fa-layer-group"></i> 1. ตัวส่วนร่วม</p>
+                    <div id="slot-denom" data-type="denom" class="w-full h-32 slot-empty rounded-xl flex items-center justify-center transition-all">
+                        <span class="text-slate-400 text-sm">แตะเลือกการ์ดด้านล่าง</span>
+                    </div>
+                </div>
+                <!-- ช่องคำตอบ -->
+                <div class="flex flex-col items-center">
+                    <p class="text-xs font-bold text-green-600 mb-2"><i class="fas fa-check-circle"></i> 2. คำตอบ</p>
+                    <div id="slot-ans" data-type="ans" class="w-full h-32 slot-empty rounded-xl flex items-center justify-center transition-all">
+                         <span class="text-slate-400 text-sm">แตะเลือกการ์ดด้านล่าง</span>
+                    </div>
+                </div>
+                <!-- ช่องภาพ -->
+                <div class="flex flex-col items-center">
+                    <p class="text-xs font-bold text-pink-600 mb-2"><i class="fas fa-image"></i> 3. ภาพเศษส่วน</p>
+                    <div id="slot-img" data-type="img" class="w-full h-32 slot-empty rounded-xl flex items-center justify-center transition-all">
+                         <span class="text-slate-400 text-sm">แตะเลือกการ์ดด้านล่าง</span>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="mt-8 flex justify-center h-14">
+                <button id="btn-check" class="hidden px-8 py-3 bg-emerald-500 hover:bg-emerald-400 text-white rounded-full font-bold text-lg shadow-[0_5px_0_#047857] hover:-translate-y-1 transition-all">
+                    ตรวจสอบความถูกต้อง <i class="fas fa-search ml-1"></i>
+                </button>
+            </div>
+        </section>
+
+        <!-- กองการ์ดให้เลือก (Choices) -->
+        <section>
+            <h3 class="text-center font-bold text-slate-500 mb-4 text-sm"><i class="fas fa-hand-pointer"></i> แตะที่การ์ดเพื่อเลือกใส่ช่อง</h3>
+            <div id="choices-container" class="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-5 gap-3 md:gap-4">
+                <!-- การ์ดตัวเลือกจะถูกสร้างด้วย JS -->
+            </div>
+        </section>
+    </div>
+
+    <!-- Custom Modal System -->
+    <div id="custom-modal" class="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm hidden opacity-0 transition-opacity duration-300">
+        <div class="bg-white w-[90%] max-w-sm rounded-3xl p-6 text-center shadow-2xl transform scale-90 transition-transform duration-300" id="modal-content">
+            <div id="modal-icon" class="text-6xl mb-4"></div>
+            <h2 id="modal-title" class="text-2xl font-bold mb-2">Title</h2>
+            <p id="modal-desc" class="text-slate-600 mb-6">Description</p>
+            <button id="modal-btn" class="w-full py-3 bg-blue-500 text-white rounded-xl font-bold shadow-md hover:bg-blue-600 transition-colors">
+                ตกลง
+            </button>
+        </div>
+    </div>
+
+    <script>
+        // ข้อมูลเกม 5 ชุด ตามการออกแบบ
+        const gameData = [
+            { id: 1, p_num1: 1, p_den1: 2, op: '+', p_num2: 1, p_den2: 3, c_denom: 6, a_num: 5, a_den: 6, bg_symbol: 'star', color: 'red' },
+            { id: 2, p_num1: 3, p_den1: 4, op: '-', p_num2: 1, p_den2: 2, c_denom: 4, a_num: 1, a_den: 4, bg_symbol: 'circle', color: 'blue' },
+            { id: 3, p_num1: 2, p_den1: 3, op: '+', p_num2: 1, p_den2: 4, c_denom: 12, a_num: 11, a_den: 12, bg_symbol: 'triangle', color: 'green' },
+            { id: 4, p_num1: 5, p_den1: 6, op: '-', p_num2: 1, p_den2: 3, c_denom: 6, a_num: 3, a_den: 6, bg_symbol: 'square', color: 'orange' },
+            { id: 5, p_num1: 1, p_den1: 2, op: '+', p_num2: 2, p_den2: 5, c_denom: 10, a_num: 9, a_den: 10, bg_symbol: 'hexagon', color: 'purple' },
+        ];
+
+        // State ของเกม
+        let currentRound = 0;
+        let score = 0;
+        let currentProblem = null;
+        let availableCards = []; // การ์ดที่อยู่ในกองด้านล่าง
+        let slotState = { denom: null, ans: null, img: null }; // การ์ดที่อยู่ในช่อง
+
+        // ระบบเสียง (Tone.js)
+        const synth = new Tone.PolySynth(Tone.Synth).toDestination();
+        synth.volume.value = -10;
+
+        function playSound(type) {
+            if (Tone.context.state !== 'running') return;
+            const now = Tone.now();
+            switch(type) {
+                case 'click':
+                    synth.triggerAttackRelease("C5", "32n", now);
+                    break;
+                case 'pop':
+                    synth.triggerAttackRelease("G4", "16n", now);
+                    break;
+                case 'success':
+                    synth.triggerAttackRelease(["C4", "E4", "G4", "C5"], "8n", now);
+                    break;
+                case 'error':
+                    synth.triggerAttackRelease("C3", "8n", now);
+                    setTimeout(() => synth.triggerAttackRelease("G2", "4n", now + 0.1), 100);
+                    break;
+                case 'win':
+                    synth.triggerAttackRelease(["C4", "E4", "G4"], "8n", now);
+                    synth.triggerAttackRelease(["E4", "G4", "C5"], "8n", now + 0.2);
+                    synth.triggerAttackRelease(["G4", "C5", "E5"], "4n", now + 0.4);
+                    break;
+            }
+        }
+
+        // ฟังก์ชันสร้าง HTML เศษส่วน
+        function renderHTMLFraction(num, den, sizeClass = "text-xl") {
+            return `
+                <div class="fraction ${sizeClass}">
+                    <span class="fraction-num">${num}</span>
+                    <span class="fraction-den">${den}</span>
+                </div>
+            `;
+        }
+
+        // ฟังก์ชันสร้างภาพแถบเศษส่วน (SVG Fraction Bar)
+        function generateFractionBarSVG(num, den) {
+            // คำนวณความกว้างรวมให้สมดุล
+            const boxWidth = 30;
+            const height = 30;
+            const totalWidth = den * boxWidth;
+            // จำกัดความกว้างสูงสุดเพื่อให้ไม่ล้นการ์ด
+            const viewBoxWidth = Math.max(totalWidth, 120); 
+            const startX = (viewBoxWidth - totalWidth) / 2; // จัดกึ่งกลาง
+
+            let rects = '';
+            for(let i=0; i<den; i++) {
+                const isFilled = i < num;
+                const fillClass = isFilled ? "fill-pink-500" : "fill-white";
+                rects += `<rect x="${startX + (i*boxWidth)}" y="10" width="${boxWidth}" height="${height}" rx="2" class="${fillClass} stroke-pink-700 stroke-2" />`;
+            }
+            
+            return `
+                <svg width="100%" height="50" viewBox="0 0 ${viewBoxWidth} 50" class="svg-fraction">
+                    ${rects}
+                </svg>
+            `;
+        }
+
+        // สุ่ม Array
+        function shuffleArray(array) {
+            for (let i = array.length - 1; i > 0; i--) {
+                const j = Math.floor(Math.random() * (i + 1));
+                [array[i], array[j]] = [array[j], array[i]];
+            }
+            return array;
+        }
+
+        // เตรียมข้อมูลการ์ดสำหรับรอบนั้นๆ (ของจริง + ตัวหลอก)
+        function prepareRoundCards(correctSet) {
+            let cards = [];
+            
+            // 1. ใส่การ์ดที่ถูกต้อง
+            cards.push({ id: `c_${correctSet.id}_denom`, matchId: correctSet.id, type: 'denom', value: correctSet.c_denom });
+            cards.push({ id: `c_${correctSet.id}_ans`, matchId: correctSet.id, type: 'ans', num: correctSet.a_num, den: correctSet.a_den });
+            cards.push({ id: `c_${correctSet.id}_img`, matchId: correctSet.id, type: 'img', num: correctSet.a_num, den: correctSet.a_den });
+
+            // 2. สุ่มหาตัวหลอก 2 ชุด จากชุดอื่น
+            const otherSets = shuffleArray(gameData.filter(d => d.id !== correctSet.id)).slice(0, 2);
+            
+            otherSets.forEach((wrongSet, idx) => {
+                // หลอกส่วนร่วม
+                cards.push({ id: `w_denom_${idx}`, matchId: wrongSet.id, type: 'denom', value: wrongSet.c_denom });
+                // หลอกคำตอบ
+                cards.push({ id: `w_ans_${idx}`, matchId: wrongSet.id, type: 'ans', num: wrongSet.a_num, den: wrongSet.a_den });
+                // หลอกภาพ
+                cards.push({ id: `w_img_${idx}`, matchId: wrongSet.id, type: 'img', num: wrongSet.a_num, den: wrongSet.a_den });
+            });
+
+            return shuffleArray(cards);
+        }
+
+        // แสดงโจทย์
+        function renderProblem() {
+            const container = document.getElementById('problem-container');
+            const f1 = renderHTMLFraction(currentProblem.p_num1, currentProblem.p_den1);
+            const f2 = renderHTMLFraction(currentProblem.p_num2, currentProblem.p_den2);
+            const opColor = currentProblem.op === '+' ? 'text-blue-600' : 'text-red-500';
+            container.innerHTML = `${f1} <span class="mx-2 ${opColor}">${currentProblem.op}</span> ${f2}`;
+        }
+
+        // สร้าง HTML ของการ์ด
+        function createCardHTML(card) {
+            let bgClass = '';
+            let contentHTML = '';
+            let iconHTML = '';
+
+            if (card.type === 'denom') {
+                bgClass = 'bg-yellow-100 border-yellow-400 hover:bg-yellow-200 text-yellow-800';
+                contentHTML = `<div class="text-3xl font-bold">${card.value}</div>`;
+                iconHTML = `<i class="fas fa-layer-group text-yellow-500 opacity-20 text-4xl absolute -bottom-2 -right-2"></i>`;
+            } else if (card.type === 'ans') {
+                bgClass = 'bg-green-100 border-green-400 hover:bg-green-200 text-green-800';
+                contentHTML = renderHTMLFraction(card.num, card.den, "text-2xl");
+                iconHTML = `<i class="fas fa-check-circle text-green-500 opacity-20 text-4xl absolute -bottom-2 -right-2"></i>`;
+            } else if (card.type === 'img') {
+                bgClass = 'bg-pink-100 border-pink-400 hover:bg-pink-200';
+                contentHTML = generateFractionBarSVG(card.num, card.den);
+                // iconHTML = `<i class="fas fa-image text-pink-500 opacity-20 text-4xl absolute -bottom-2 -right-2"></i>`;
+            }
+
+            return `
+                <div class="card-pop relative flex flex-col items-center justify-center w-full h-24 md:h-28 rounded-xl border-b-4 border-2 ${bgClass} overflow-hidden" 
+                     onclick="handleCardClick('${card.id}')">
+                    ${contentHTML}
+                    ${iconHTML}
+                </div>
+            `;
+        }
+
+        // เรนเดอร์การ์ดทั้งหมด
+        function renderUI() {
+            const choicesContainer = document.getElementById('choices-container');
+            choicesContainer.innerHTML = '';
+            
+            // เรนเดอร์กองการ์ด
+            availableCards.forEach(card => {
+                const wrapper = document.createElement('div');
+                wrapper.innerHTML = createCardHTML(card);
+                choicesContainer.appendChild(wrapper.firstElementChild);
+            });
+
+            // เรนเดอร์ช่อง Slots
+            ['denom', 'ans', 'img'].forEach(type => {
+                const slot = document.getElementById(`slot-${type}`);
+                const currentCard = slotState[type];
+                
+                if (currentCard) {
+                    slot.innerHTML = createCardHTML(currentCard);
+                    slot.classList.remove('slot-empty');
+                    slot.classList.add('bg-white', 'shadow-inner');
+                } else {
+                    let typeName = type === 'denom' ? 'ส่วนร่วม' : type === 'ans' ? 'คำตอบ' : 'ภาพเศษส่วน';
+                    slot.innerHTML = `<span class="text-slate-400 text-sm">แตะเลือกการ์ด${typeName}</span>`;
+                    slot.classList.add('slot-empty');
+                    slot.classList.remove('bg-white', 'shadow-inner');
+                }
+            });
+
+            checkAllSlotsFilled();
+        }
+
+        // จัดการเมื่อแตะการ์ด
+        function handleCardClick(cardId) {
+            playSound('click');
+            
+            // หาว่าการ์ดนี้อยู่ใน Slot หรืออยู่ข้างล่าง
+            let cardObj = null;
+            let currentSlotType = null;
+
+            // เช็คใน slots ก่อน
+            for (const key in slotState) {
+                if (slotState[key] && slotState[key].id === cardId) {
+                    cardObj = slotState[key];
+                    currentSlotType = key;
+                    break;
+                }
+            }
+
+            if (currentSlotType) {
+                // ถ้าอยู่ใน slot ให้เอาออกไปคืนกอง
+                slotState[currentSlotType] = null;
+                availableCards.push(cardObj);
+            } else {
+                // ถ้าอยู่ในกอง ให้หา object และย้ายไป slot ที่ตรง type
+                const index = availableCards.findIndex(c => c.id === cardId);
+                if (index > -1) {
+                    cardObj = availableCards[index];
+                    const targetType = cardObj.type;
+                    
+                    // ถ้า slot นั้นมีการ์ดอยู่แล้ว ให้เอาการ์ดเดิมกลับมากองก่อน
+                    if (slotState[targetType]) {
+                        availableCards.push(slotState[targetType]);
+                    }
+                    
+                    slotState[targetType] = cardObj;
+                    availableCards.splice(index, 1);
+                }
+            }
+
+            renderUI();
+        }
+
+        // ตรวจสอบว่าใส่การ์ดครบหรือยัง เพื่อโชว์ปุ่มตรวจคำตอบ
+        function checkAllSlotsFilled() {
+            const btnCheck = document.getElementById('btn-check');
+            if (slotState.denom && slotState.ans && slotState.img) {
+                btnCheck.classList.remove('hidden');
+                btnCheck.classList.add('bounce-in');
+            } else {
+                btnCheck.classList.add('hidden');
+                btnCheck.classList.remove('bounce-in');
+            }
+        }
+
+        // ตรวจคำตอบ
+        function checkAnswer() {
+            const expectedId = currentProblem.id;
+            const isDenomCorrect = slotState.denom.matchId === expectedId;
+            const isAnsCorrect = slotState.ans.matchId === expectedId;
+            const isImgCorrect = slotState.img.matchId === expectedId;
+
+            if (isDenomCorrect && isAnsCorrect && isImgCorrect) {
+                // ถูกต้องทั้งหมด
+                playSound('success');
+                score += 1;
+                document.getElementById('score-display').textContent = score;
+                
+                showModal(
+                    "🎉 เก่งมาก!", 
+                    "สัญลักษณ์ด้านหลังการ์ดตรงกัน แสดงว่าจับคู่ถูกต้อง", 
+                    "⭐ ทำข้อต่อไป", 
+                    () => {
+                        currentRound++;
+                        if (currentRound < gameData.length) {
+                            startRound(currentRound);
+                        } else {
+                            endGame();
+                        }
+                    },
+                    "text-emerald-500"
+                );
+            } else {
+                // มีจุดผิด
+                playSound('error');
+                
+                // หาว่าผิดตรงไหนเพื่อใบ้
+                let hint = "ลองตรวจสอบดูใหม่นะ<br>";
+                if (!isDenomCorrect) hint += "- ตัวส่วนร่วมยังไม่ใช่นะ ลองหาเลขที่ทั้งสองส่วนหารลงตัวดู<br>";
+                if (!isAnsCorrect && isDenomCorrect) hint += "- ส่วนร่วมถูกแล้ว แต่คำตอบยังคลาดเคลื่อนอยู่<br>";
+                if (!isImgCorrect && isAnsCorrect) hint += "- คำตอบถูกแล้ว แต่เลือกภาพเศษส่วนไม่ตรงกับคำตอบนะ<br>";
+
+                // ใส่เอฟเฟกต์สั่น
+                document.querySelectorAll('[id^="slot-"]').forEach(el => {
+                    el.classList.add('shake-animation');
+                    setTimeout(() => el.classList.remove('shake-animation'), 500);
+                });
+
+                showModal("🤔 เกือบถูกแล้ว", hint, "ลองใหม่", null, "text-orange-500", "fas fa-exclamation-circle");
+            }
+        }
+
+        // เริ่มรอบใหม่
+        function startRound(roundIndex) {
+            currentProblem = gameData[roundIndex];
+            document.getElementById('round-display').textContent = roundIndex + 1;
+            
+            // ล้าง Slots
+            slotState = { denom: null, ans: null, img: null };
+            
+            // เตรียมการ์ด
+            availableCards = prepareRoundCards(currentProblem);
+            
+            renderProblem();
+            renderUI();
+        }
+
+        // จบเกม
+        function endGame() {
+            playSound('win');
+            let message = `คุณทำคะแนนได้ ${score} / ${gameData.length} คะแนน`;
+            let icon = "🏆";
+            if(score === gameData.length) message += "<br>ยอดเยี่ยม! เข้าใจเรื่องเศษส่วนได้อย่างทะลุปรุโปร่ง";
+            else if (score >= 3) message += "<br>ทำได้ดีมาก! ฝึกอีกนิดจะเก่งขึ้นแน่นอน";
+            else message += "<br>ไม่ต้องเสียใจ ลองเล่นใหม่อีกครั้งนะ";
+
+            showModal("จบเกม!", message, "เล่นอีกครั้ง", () => {
+                startGame();
+            }, "text-yellow-500", null, true);
+        }
+
+        // ระบบ Modal แทน alert()
+        const modalContainer = document.getElementById('custom-modal');
+        const modalContent = document.getElementById('modal-content');
+        const modalBtn = document.getElementById('modal-btn');
+        let modalCallback = null;
+
+        function showModal(title, desc, btnText, callback, colorClass = "text-blue-500", iconClass = null, isHtml = false) {
+            document.getElementById('modal-title').textContent = title;
+            document.getElementById('modal-title').className = `text-2xl font-bold mb-2 ${colorClass}`;
+            
+            if(isHtml) document.getElementById('modal-desc').innerHTML = desc;
+            else document.getElementById('modal-desc').textContent = desc;
+            
+            document.getElementById('modal-btn').textContent = btnText;
+            
+            if (iconClass) {
+                document.getElementById('modal-icon').innerHTML = `<i class="${iconClass} ${colorClass}"></i>`;
+            } else {
+                document.getElementById('modal-icon').innerHTML = title.includes("🎉") ? "🎉" : (title.includes("🏆") ? "🏆" : "💡");
+            }
+
+            modalCallback = callback;
+            
+            modalContainer.classList.remove('hidden');
+            // Allow display block to apply before fading in
+            setTimeout(() => {
+                modalContainer.classList.remove('opacity-0');
+                modalContent.classList.remove('scale-90');
+            }, 10);
+        }
+
+        function closeModal() {
+            playSound('pop');
+            modalContainer.classList.add('opacity-0');
+            modalContent.classList.add('scale-90');
+            
+            setTimeout(() => {
+                modalContainer.classList.add('hidden');
+                if (modalCallback) modalCallback();
+            }, 300);
+        }
+
+        modalBtn.addEventListener('click', closeModal);
+
+        // การเริ่มเกมครั้งแรก (ผูกกับปุ่ม Start เพื่อ init Tone.js)
+        async function startGame() {
+            // Start Audio Context
+            await Tone.start();
+            playSound('pop');
+            
+            // Hide Start Screen
+            const startScreen = document.getElementById('start-screen');
+            startScreen.classList.add('opacity-0');
+            setTimeout(() => {
+                startScreen.classList.add('hidden');
+                document.getElementById('game-screen').classList.remove('hidden');
+                
+                // รีเซ็ตค่าและเริ่มรอบแรก
+                currentRound = 0;
+                score = 0;
+                document.getElementById('score-display').textContent = score;
+                startRound(currentRound);
+            }, 500);
+        }
+
+        // Event Listeners
+        document.getElementById('btn-start').addEventListener('click', startGame);
+        document.getElementById('btn-check').addEventListener('click', checkAnswer);
+
+    </script>
+</body>
+</html>
